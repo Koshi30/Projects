@@ -1,20 +1,28 @@
+# Base image for runtime
+FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS base
+WORKDIR /app
+EXPOSE 8085
+
 # Build stage
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy only the project folder
-COPY sampleapi/ .
+# Copy everything to image
+COPY . .
 
-# Restore using the correct project path
+# Restore dependencies
 RUN dotnet restore "sampleapi/SampleAPI.csproj"
 
-# Build & publish
+# Build application
+RUN dotnet build "sampleapi/SampleAPI.csproj" -c Release -o /app/build
+
+# Publish stage
+FROM build AS publish
 RUN dotnet publish "sampleapi/SampleAPI.csproj" -c Release -o /app/publish
 
-# Runtime stage
-FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS final
+# Final runtime image
+FROM base AS final
 WORKDIR /app
-COPY --from=build /app/publish .
-EXPOSE 8082
+COPY --from=publish /app/publish .
 
 ENTRYPOINT ["dotnet", "SampleAPI.dll"]
