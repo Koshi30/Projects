@@ -1,0 +1,73 @@
+pipeline {
+    agent any
+
+    environment {
+        IMAGE_NAME = "sampleapi"
+        TAG = "latest"
+    }
+
+    stages {
+
+        stage('Clone Repository') {
+            steps {
+                git branch: 'master', url: 'https://github.com/Koshi30/Projects.git'
+            }
+        }
+
+        stage('SonarQube Analysis') {
+            steps {
+                withSonarQubeEnv('SonarQube') {
+                    withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_AUTH_TOKEN')]) {
+                        script {
+                            def scannerHome = tool name: 'SonarScanner', type: 'hudson.plugins.sonar.SonarRunnerInstallation'
+                            sh """
+                                ${scannerHome}/bin/sonar-scanner \
+                                -Dsonar.projectKey=sampleapi \
+                                -Dsonar.sources=. \
+                                -Dsonar.host.url=${SONAR_HOST_URL} \
+                                -Dsonar.login=${SONAR_AUTH_TOKEN}
+                            """
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build, Push & Re-deploy Docker Image') {
+            steps {
+                withCredentials([usernamePassword(credentialsId: 'dockerhub', 
+                                                 usernameVariable: 'DOCKER_USER', 
+                                                 passwordVariable: 'DOCKER_PASS')]) {
+                    script {
+                        // Build Docker image
+                        sh "docker build -t $IMAGE_NAME:$TAG ."
+
+                        // Docker login
+                        sh "echo $DOCKER_PASS | docker login -u $DOCKER_USER --password-stdin"
+
+                        // Tag and push
+                        sh "docker tag $IMAGE_NAME:$TAG $DOCKER_USER/$IMAGE_NAME:$TAG"
+                        sh "docker push $DOCKER_USER/$IMAGE_NAME:$TAG"
+
+                        // Stop & remove old container if running
+                        sh """
+                            if [ \$(docker ps -q -f name=sampleapi) ]; then
+                                docker stop sampleapi
+                                docker rm sampleapi
+                            fi
+                        """
+
+                        // Run new container
+                        sh "docker run -d --name sampleapi -p 5000:5000 $DOCKER_USER/$IMAGE_NAME:$TAG"
+                    }
+                }
+            }
+        }
+
+    }
+
+    post {
+        success { echo "Deployment Successful!" }
+        failure { echo "Deployment Failed!" }
+    }
+}
