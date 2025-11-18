@@ -3,7 +3,7 @@ FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
 # Copy only the project folder
-COPY sampleapi/ sampleapi/
+COPY sampleapi/ .
 
 # Restore using the correct project path
 RUN dotnet restore "sampleapi/SampleAPI.csproj"
